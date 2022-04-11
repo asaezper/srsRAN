@@ -1,48 +1,53 @@
-name: C/C++ CI
-on: push
+name: Build & Unit Tests
+on: pull_request
+
 jobs:
-  x86_ubuntu18_build:
-    name: Build and test on x86 Ubuntu 18.04
-    strategy:
-        matrix:
-          compiler: [gcc, clang]
-    runs-on: ubuntu-18.04
+  code-format:
+    name: Check Clang Format
+    runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v1
-      - name: Build srsRAN on x86 Ubuntu 18.04
+      - name: Prepare OS
         run: |
-          sudo apt update
-          sudo apt install -y build-essential cmake libfftw3-dev libmbedtls-dev libpcsclite-dev libboost-program-options-dev libconfig++-dev libsctp-dev colordiff ninja-build valgrind
-          mkdir build && cd build && cmake -DRF_FOUND=True -GNinja .. && ninja && ctest
-  x86_ubuntu16_build:
-    name: Build and test on x86 Ubuntu 16.04
-    strategy:
-        matrix:
-          compiler: [gcc, clang]
-    runs-on: ubuntu-16.04
-    steps:
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-format-8 git colordiff
+          sudo ln -s /usr/bin/clang-format-diff-8 /usr/bin/clang-format-diff
       - uses: actions/checkout@v1
-      - name: Build srsRAN on x86 Ubuntu 16.04
+      - name: Clang format
         run: |
-          sudo apt update
-          sudo apt install -y build-essential cmake libfftw3-dev libmbedtls-dev libpcsclite-dev libboost-program-options-dev libconfig++-dev libsctp-dev colordiff ninja-build valgrind
-          mkdir build && cd build && cmake -DRF_FOUND=True -GNinja .. && ninja && ctest
-          
-  aarch64_ubuntu18_build:
-    runs-on: ubuntu-18.04
-    name: Build on aarch64
+          git remote set-branches --add origin $GITHUB_BASE_REF
+          git fetch
+          ./run-clang-format-diff.sh origin/$GITHUB_BASE_REF
+
+  ubuntu_build:
+    name: Build and test on Ubuntu
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-18.04, ubuntu-20.04]
         compiler: [gcc, clang]
     steps:
-    - uses: actions/checkout@v1
-    - name: Build srsRAN on aarch64
-      uses: uraimo/run-on-arch-action@master
-      with:
-        architecture: aarch64
-        distribution: ubuntu18.04
+      - name: Prepare OS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake libfftw3-dev libmbedtls-dev libboost-program-options-dev libconfig++-dev libsctp-dev ninja-build valgrind rapidjson-dev
+      - name: Prepare Clang
+        if: matrix.compiler == 'clang'
+        run: |
+          sudo apt-get install -y --no-install-recommends clang
+          echo "CC=/usr/bin/clang" >> $GITHUB_ENV
+          echo "CXX=/usr/bin/clang++" >> $GITHUB_ENV
+      - uses: actions/checkout@v1
+      - name: Build srsRAN on Ubuntu
+        run: |
+          mkdir build
+          cd build
+          cmake -DENABLE_TTCN3=True -DRF_FOUND=True -GNinja .. 
+          ninja 
+          sudo ninja install
+      - name: Run unit tets
+        if: matrix.compiler == 'gcc'
         run: |
           export CTEST_PARALLEL_LEVEL=$(nproc --all)
-          apt update
-          apt install -y build-essential cmake libfftw3-dev libmbedtls-dev libpcsclite-dev libboost-program-options-dev libconfig++-dev libsctp-dev ninja-build
-          ls -l && pwd && mkdir build && cd build && cmake -DRF_FOUND=True -GNinja .. && ninja
+          cd build
+          ctest

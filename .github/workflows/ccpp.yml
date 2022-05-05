@@ -18,36 +18,30 @@ jobs:
           git fetch
           ./run-clang-format-diff.sh origin/$GITHUB_BASE_REF
 
-  ubuntu_build:
-    name: Build and test on Ubuntu
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-18.04, ubuntu-20.04]
-        compiler: [gcc, clang]
-    steps:
-      - name: Prepare OS
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential cmake libfftw3-dev libmbedtls-dev libboost-program-options-dev libconfig++-dev libsctp-dev ninja-build valgrind rapidjson-dev
-      - name: Prepare Clang
-        if: matrix.compiler == 'clang'
-        run: |
-          sudo apt-get install -y --no-install-recommends clang
-          echo "CC=/usr/bin/clang" >> $GITHUB_ENV
-          echo "CXX=/usr/bin/clang++" >> $GITHUB_ENV
-      - uses: actions/checkout@v1
-      - name: Build srsRAN on Ubuntu
-        run: |
-          mkdir build
-          cd build
-          cmake -DENABLE_TTCN3=True -DRF_FOUND=True -GNinja .. 
-          ninja 
-          sudo ninja install
-      - name: Run unit tets
-        if: matrix.compiler == 'gcc'
-        run: |
-          export CTEST_PARALLEL_LEVEL=$(nproc --all)
-          cd build
-          ctest
+  build1804gcc:
+    uses: ./.github/workflows/build.yml
+    with:
+      os: ubuntu-18.04
+      compiler: gcc
+      unit: false
+
+  build1804clang:
+    uses: ./.github/workflows/build.yml
+    with:
+      os: ubuntu-18.04
+      compiler: clang
+      unit: false
+
+  build2004gcc:
+    uses: ./.github/workflows/build.yml
+    with:
+      os: ubuntu-20.04
+      compiler: gcc
+      unit: true
+
+  build2004clang:
+    uses: ./.github/workflows/build.yml
+    with:
+      os: ubuntu-20.04
+      compiler: clang
+      unit: false

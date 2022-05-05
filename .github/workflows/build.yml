@@ -1,0 +1,75 @@
+on:
+  workflow_call:
+    inputs:
+      os:
+        required: true
+        type: string
+      compiler:
+        required: true
+        type: string
+      unit: 
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  build:
+    name: Build
+    runs-on: ${{ inputs.os }}
+    steps:
+      - name: Prepare OS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake libfftw3-dev libmbedtls-dev libboost-program-options-dev libconfig++-dev libsctp-dev ninja-build valgrind rapidjson-dev
+      - name: Prepare Clang
+        if: inputs.compiler == 'clang'
+        run: |
+          sudo apt-get install -y --no-install-recommends clang
+          echo "CC=/usr/bin/clang" >> $GITHUB_ENV
+          echo "CXX=/usr/bin/clang++" >> $GITHUB_ENV
+      - uses: actions/checkout@v1
+      - name: Build srsRAN on Ubuntu
+        run: |
+          mkdir build
+          cd build
+          cmake -DENABLE_TTCN3=True -DRF_FOUND=True -GNinja .. 
+          ninja 
+          sudo ninja install
+      - name: Package build folder
+        if: inputs.unit
+        run: tar -cvf build.tar build
+      - name: Archive build
+        if: inputs.unit
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-${{ inputs.os }}-${{ inputs.compiler }}
+          path: build.tar
+          retention-days: 1
+
+  unit:
+    name: Unit Tests
+    if: inputs.unit
+    needs: build
+    runs-on: ${{ inputs.os }}
+    steps:
+      # To reuse the same step, you can create a workflow and call it as a composite action
+      - name: Prepare OS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake libfftw3-dev libmbedtls-dev libboost-program-options-dev libconfig++-dev libsctp-dev ninja-build valgrind rapidjson-dev
+      - uses: actions/checkout@v1
+      - name: Download artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: build-${{ inputs.os }}-${{ inputs.compiler }}
+      - name: Extract artifact
+        # Required to keep permissions
+        run: |
+          ls -R .
+          tar -xvf build.tar
+          ls -R .
+      - name: Run unit tets
+        run: |
+          export CTEST_PARALLEL_LEVEL=$(nproc --all)
+          cd build
+          ctest
